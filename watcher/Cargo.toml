@@ -1,0 +1,40 @@
+[package]
+name = "pot-watcher"
+version = "0.1.0"
+edition = "2021"
+description = "Proof of Thought watcher daemon: subscribe, verify, challenge"
+license = "Apache-2.0"
+
+[[bin]]
+name = "pot-watcher"
+path = "src/main.rs"
+
+[lib]
+name = "pot_watcher"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+futures-util = "0.3"
+solana-client = "1.18"
+solana-sdk = "1.18"
+serde = { version = "1", features = ["derive"] }
+serde_with = "3"
+serde_bytes = "0.11"
+ciborium = "0.2"
+blake3 = "1"
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+async-trait = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+thiserror = "1"
+bs58 = "0.5"
+base64 = "0.22"
+bincode = "1"
+serde_json = "1"
+
+[dev-dependencies]
+tokio-test = "0.4"
