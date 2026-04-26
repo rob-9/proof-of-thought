@@ -1,0 +1,22 @@
+# Worktrees
+.worktrees/
+
+# Rust
+target/
+**/target/
+Cargo.lock
+
+# Node
+node_modules/
+*.tsbuildinfo
+.pnpm-store/
+pnpm-lock.yaml.bak
+
+# OS / editors
+.DS_Store
+*.swp
+*~
+
+# Anchor
+.anchor/
+test-ledger/
