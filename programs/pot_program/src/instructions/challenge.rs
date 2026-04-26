@@ -45,7 +45,7 @@ pub struct OpenChallenge<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(
+pub fn open_challenge_handler(
     ctx: Context<OpenChallenge>,
     claim: ChallengeClaim,
     bond: u64,

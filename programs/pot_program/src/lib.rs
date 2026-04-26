@@ -47,7 +47,7 @@ pub mod pot_program {
     use super::*;
 
     pub fn register_agent(ctx: Context<RegisterAgent>, stake: u64) -> Result<()> {
-        instructions::register_agent::handler(ctx, stake)
+        instructions::register_agent_handler(ctx, stake)
     }
 
     pub fn register_model(
@@ -57,14 +57,14 @@ pub mod pot_program {
         verifier_pubkey: Pubkey,
         tee_root_ca: Pubkey,
     ) -> Result<()> {
-        instructions::register_model::handler(ctx, model_id, class, verifier_pubkey, tee_root_ca)
+        instructions::register_model_handler(ctx, model_id, class, verifier_pubkey, tee_root_ca)
     }
 
     pub fn register_policy(
         ctx: Context<RegisterPolicy>,
         args: RegisterPolicyArgs,
     ) -> Result<()> {
-        instructions::register_policy::handler(ctx, args)
+        instructions::register_policy_handler(ctx, args)
     }
 
     pub fn request_vrf(
@@ -72,7 +72,7 @@ pub mod pot_program {
         nonce_idx: u64,
         seed: [u8; 32],
     ) -> Result<()> {
-        instructions::request_vrf::handler(ctx, nonce_idx, seed)
+        instructions::request_vrf_handler(ctx, nonce_idx, seed)
     }
 
     pub fn submit_thought(
@@ -80,11 +80,11 @@ pub mod pot_program {
         args: ThoughtRecordArgs,
         trace_uri: String,
     ) -> Result<()> {
-        instructions::submit_thought::handler(ctx, args, trace_uri)
+        instructions::submit_thought_handler(ctx, args, trace_uri)
     }
 
     pub fn consume_thought(ctx: Context<ConsumeThought>) -> Result<()> {
-        instructions::consume_thought::handler(ctx)
+        instructions::consume_thought_handler(ctx)
     }
 
     pub fn challenge(
@@ -93,25 +93,25 @@ pub mod pot_program {
         bond: u64,
         evidence_uri_hash: [u8; 32],
     ) -> Result<()> {
-        instructions::challenge::handler(ctx, claim, bond, evidence_uri_hash)
+        instructions::open_challenge_handler(ctx, claim, bond, evidence_uri_hash)
     }
 
     pub fn resolve_unchallenged(ctx: Context<ResolveUnchallenged>) -> Result<()> {
-        instructions::resolve::resolve_unchallenged_handler(ctx)
+        instructions::resolve_unchallenged_handler(ctx)
     }
 
     pub fn resolve_challenged(
         ctx: Context<ResolveChallenged>,
         verdict: bool,
     ) -> Result<()> {
-        instructions::resolve::resolve_challenged_handler(ctx, verdict)
+        instructions::resolve_challenged_handler(ctx, verdict)
     }
 
     pub fn stake(ctx: Context<Stake>, amount: u64) -> Result<()> {
-        instructions::stake::stake_handler(ctx, amount)
+        instructions::stake_handler(ctx, amount)
     }
 
     pub fn withdraw_stake(ctx: Context<WithdrawStake>, amount: u64) -> Result<()> {
-        instructions::stake::withdraw_handler(ctx, amount)
+        instructions::withdraw_handler(ctx, amount)
     }
 }

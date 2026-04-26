@@ -34,7 +34,7 @@ pub struct RegisterPolicy<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<RegisterPolicy>, args: RegisterPolicyArgs) -> Result<()> {
+pub fn register_policy_handler(ctx: Context<RegisterPolicy>, args: RegisterPolicyArgs) -> Result<()> {
     require!(
         args.allowed_models.len() <= Policy::MAX_ALLOWED_MODELS,
         crate::errors::PotError::Overflow

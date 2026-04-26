@@ -34,7 +34,7 @@ pub struct RegisterAgent<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<RegisterAgent>, stake: u64) -> Result<()> {
+pub fn register_agent_handler(ctx: Context<RegisterAgent>, stake: u64) -> Result<()> {
     require!(stake > 0, PotError::InsufficientStake);
 
     let agent = &mut ctx.accounts.agent;

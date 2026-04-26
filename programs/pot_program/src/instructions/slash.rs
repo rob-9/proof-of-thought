@@ -13,6 +13,6 @@ use anchor_lang::prelude::*;
 #[derive(Accounts)]
 pub struct SlashStub {}
 
-pub fn handler(_ctx: Context<SlashStub>) -> Result<()> {
+pub fn slash_handler(_ctx: Context<SlashStub>) -> Result<()> {
     Ok(())
 }

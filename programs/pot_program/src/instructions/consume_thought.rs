@@ -33,7 +33,7 @@ pub struct ConsumeThought<'info> {
 /// PDA, and we verify (a) the thought commits to that exact action, (b) the
 /// thought is finalized or attestation-verified, and (c) the thought is fresh
 /// per policy.max_action_age_slots.
-pub fn handler(ctx: Context<ConsumeThought>) -> Result<()> {
+pub fn consume_thought_handler(ctx: Context<ConsumeThought>) -> Result<()> {
     let thought = &mut ctx.accounts.thought;
     let policy = &ctx.accounts.policy;
     let clock = Clock::get()?;

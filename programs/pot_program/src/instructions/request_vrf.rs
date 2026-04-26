@@ -39,7 +39,7 @@ pub struct RequestVrf<'info> {
 ///
 /// TODO(pyth-entropy): convert to a CPI request + callback once the Pyth
 /// Entropy SDK is wired in. See docs/future-work.md (#pyth-entropy).
-pub fn handler(ctx: Context<RequestVrf>, nonce_idx: u64, seed: [u8; 32]) -> Result<()> {
+pub fn request_vrf_handler(ctx: Context<RequestVrf>, nonce_idx: u64, seed: [u8; 32]) -> Result<()> {
     let vrf = &mut ctx.accounts.vrf_request;
     vrf.agent = ctx.accounts.agent.key();
     vrf.nonce_idx = nonce_idx;

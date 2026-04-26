@@ -54,7 +54,7 @@ pub struct SubmitThought<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(
+pub fn submit_thought_handler(
     ctx: Context<SubmitThought>,
     args: ThoughtRecordArgs,
     trace_uri: String,

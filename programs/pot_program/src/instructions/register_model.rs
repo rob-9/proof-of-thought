@@ -22,7 +22,7 @@ pub struct RegisterModel<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(
+pub fn register_model_handler(
     ctx: Context<RegisterModel>,
     model_id: [u8; 32],
     class: ModelClass,
