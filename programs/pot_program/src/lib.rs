@@ -33,7 +33,7 @@ pub mod state;
 use instructions::*;
 use state::{ChallengeClaim, ModelClass, ThoughtRecordArgs};
 
-declare_id!("Pot11111111111111111111111111111111111111111");
+declare_id!("Pot1111111111111111111111111111111111111111");
 
 /// Governance authority allowed to call `register_model`.
 ///

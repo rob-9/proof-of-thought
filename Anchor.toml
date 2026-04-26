@@ -3,7 +3,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-pot_program = "Pot11111111111111111111111111111111111111111"
+pot_program = "Pot1111111111111111111111111111111111111111"
 
 [registry]
 url = "https://api.apr.dev"
