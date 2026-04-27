@@ -234,6 +234,10 @@ pub struct Policy {
 }
 
 /// `ChallengeClaim` mirrors the on-chain enum (spec §5.1).
+///
+/// **MUST stay in sync with `programs/pot_program/src/state/challenge.rs`
+/// `ChallengeClaim`.** The numeric values are the on-chain wire format —
+/// reordering or renumbering breaks every existing challenge filing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum ChallengeClaim {
@@ -242,9 +246,10 @@ pub enum ChallengeClaim {
     InputOmission = 2,
     Replay = 3,
     StaleVRF = 4,
+    AttestationInvalid = 5,
     /// Inconsistent commitments — agent's claimed output_commitment doesn't
     /// match blake3 of canonical_output bytes in the trace.
-    InconsistentCommitments = 5,
+    InconsistentCommitments = 6,
 }
 
 #[cfg(test)]

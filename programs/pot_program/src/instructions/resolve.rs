@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_lang::system_program::{self, Transfer};
 
 use crate::errors::PotError;
 use crate::state::{
@@ -129,103 +130,136 @@ pub struct ResolveChallenged<'info> {
     /// CHECK: agent operator — receives the 90% bond return on innocent verdict.
     #[account(mut, address = agent.operator @ PotError::WrongAgent)]
     pub agent_operator: UncheckedAccount<'info>,
+
+    pub system_program: Program<'info, System>,
 }
 
 pub fn resolve_challenged_handler(ctx: Context<ResolveChallenged>, verdict: bool) -> Result<()> {
-    let thought = &mut ctx.accounts.thought;
-    let agent = &mut ctx.accounts.agent;
-    let challenge = &mut ctx.accounts.challenge;
+    let agent_key = ctx.accounts.agent.key();
+    let challenge_key = ctx.accounts.challenge.key();
+    let stake_vault_key = ctx.accounts.stake_vault.key();
+    let bond_vault_key = ctx.accounts.bond_vault.key();
+    let stake_vault_bump = ctx.bumps.stake_vault;
+    let bond_vault_bump = ctx.bumps.bond_vault;
 
-    let status = ThoughtStatus::from_u8(thought.status).ok_or(PotError::InvalidStatus)?;
+    let status = ThoughtStatus::from_u8(ctx.accounts.thought.status)
+        .ok_or(PotError::InvalidStatus)?;
     require!(status == ThoughtStatus::Challenged, PotError::InvalidStatus);
-    require!(!challenge.resolved, PotError::InvalidStatus);
+    require!(!ctx.accounts.challenge.resolved, PotError::InvalidStatus);
     require!(
-        challenge.challenger == ctx.accounts.challenger.key(),
+        ctx.accounts.challenge.challenger == ctx.accounts.challenger.key(),
         PotError::WrongAgent
     );
+    // I8: the resolver could try to alias `challenger` to one of the vaults,
+    // turning a payout into a self-credit no-op. Forbid it explicitly.
+    require!(
+        ctx.accounts.challenger.key() != stake_vault_key
+            && ctx.accounts.challenger.key() != bond_vault_key,
+        PotError::Unauthorized
+    );
 
+    let challenge_bond = ctx.accounts.challenge.bond;
+    let agent_stake = ctx.accounts.agent.stake_amount;
     let mut slashed_amount: u64 = 0;
 
     if verdict {
         // Guilty. Slash the entire stake (per §5.4 the policy floor is
         // 10× max_loss_per_thought, so full slash is intentional). 60/30/10.
-        let stake = agent.stake_amount;
-        let to_challenger = stake
-            .checked_mul(60)
-            .ok_or(PotError::Overflow)?
-            .checked_div(100)
-            .ok_or(PotError::Overflow)?;
-        let to_treasury_a = stake
-            .checked_mul(10)
-            .ok_or(PotError::Overflow)?
-            .checked_div(100)
-            .ok_or(PotError::Overflow)?;
-        // 30% burn — leave in stake_vault and zero accounting.
+        let stake = agent_stake;
+        let to_challenger = (stake as u128 * 60 / 100) as u64;
+        let to_treasury_a = (stake as u128 * 10 / 100) as u64;
+        // 30% remains in the stake_vault and is never debited — effectively
+        // burned for the lifetime of the protocol upgrade authority. See
+        // future-work.md § "incinerator pubkey" for the upgrade path.
         let _to_burn = stake
             .checked_sub(to_challenger)
             .ok_or(PotError::Overflow)?
             .checked_sub(to_treasury_a)
             .ok_or(PotError::Overflow)?;
 
-        // Move lamports from stake_vault → challenger / treasury via direct
-        // lamport math. Vault is a SystemProgram-owned PDA so we re-derive
-        // signer seeds and call SystemProgram::transfer with a signed CPI.
-        debit_pda_to(
-            &ctx.accounts.stake_vault,
-            &ctx.accounts.challenger,
+        let stake_signer: &[&[u8]] = &[
+            b"vault",
+            agent_key.as_ref(),
+            std::slice::from_ref(&stake_vault_bump),
+        ];
+        let stake_signers: &[&[&[u8]]] = &[stake_signer];
+        transfer_signed(
+            ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.stake_vault.to_account_info(),
+            ctx.accounts.challenger.to_account_info(),
             to_challenger,
+            stake_signers,
         )?;
-        debit_pda_to(
-            &ctx.accounts.stake_vault,
-            &ctx.accounts.treasury,
+        transfer_signed(
+            ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.stake_vault.to_account_info(),
+            ctx.accounts.treasury.to_account_info(),
             to_treasury_a,
+            stake_signers,
         )?;
 
-        // Return the challenger's bond too.
-        debit_pda_to(
-            &ctx.accounts.bond_vault,
-            &ctx.accounts.challenger,
-            challenge.bond,
+        // Return the challenger's bond.
+        let bond_signer: &[&[u8]] = &[
+            b"bond",
+            challenge_key.as_ref(),
+            std::slice::from_ref(&bond_vault_bump),
+        ];
+        let bond_signers: &[&[&[u8]]] = &[bond_signer];
+        transfer_signed(
+            ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.bond_vault.to_account_info(),
+            ctx.accounts.challenger.to_account_info(),
+            challenge_bond,
+            bond_signers,
         )?;
 
+        let agent = &mut ctx.accounts.agent;
         agent.stake_amount = 0;
         agent.reputation = agent.reputation.saturating_sub(10);
-        thought.status = ThoughtStatus::Slashed as u8;
+        ctx.accounts.thought.status = ThoughtStatus::Slashed as u8;
         slashed_amount = stake;
     } else {
         // Innocent. Griefing tax: 90% bond → agent operator, 10% → treasury.
-        let bond = challenge.bond;
-        let to_agent = bond
-            .checked_mul(90)
-            .ok_or(PotError::Overflow)?
-            .checked_div(100)
-            .ok_or(PotError::Overflow)?;
+        let bond = challenge_bond;
+        let to_agent = (bond as u128 * 90 / 100) as u64;
         let to_treasury_b = bond
             .checked_sub(to_agent)
             .ok_or(PotError::Overflow)?;
 
-        debit_pda_to(
-            &ctx.accounts.bond_vault,
-            &ctx.accounts.agent_operator,
+        let bond_signer: &[&[u8]] = &[
+            b"bond",
+            challenge_key.as_ref(),
+            std::slice::from_ref(&bond_vault_bump),
+        ];
+        let bond_signers: &[&[&[u8]]] = &[bond_signer];
+        transfer_signed(
+            ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.bond_vault.to_account_info(),
+            ctx.accounts.agent_operator.to_account_info(),
             to_agent,
+            bond_signers,
         )?;
-        debit_pda_to(
-            &ctx.accounts.bond_vault,
-            &ctx.accounts.treasury,
+        transfer_signed(
+            ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.bond_vault.to_account_info(),
+            ctx.accounts.treasury.to_account_info(),
             to_treasury_b,
+            bond_signers,
         )?;
 
-        thought.status = ThoughtStatus::Finalized as u8;
-        agent.reputation = agent.reputation.saturating_add(2);
+        ctx.accounts.thought.status = ThoughtStatus::Finalized as u8;
+        ctx.accounts.agent.reputation = ctx.accounts.agent.reputation.saturating_add(2);
     }
 
+    let challenge = &mut ctx.accounts.challenge;
     challenge.resolved = true;
     challenge.verdict = verdict;
+    let agent = &mut ctx.accounts.agent;
     agent.active_thoughts = agent.active_thoughts.saturating_sub(1);
 
     emit!(ChallengeResolved {
         challenge: challenge.key(),
-        thought: thought.key(),
+        thought: ctx.accounts.thought.key(),
         verdict,
         slashed_amount,
     });
@@ -233,25 +267,25 @@ pub fn resolve_challenged_handler(ctx: Context<ResolveChallenged>, verdict: bool
     Ok(())
 }
 
-/// Move lamports out of a SystemProgram-owned PDA via direct balance edits.
-/// Caller is responsible for ensuring the PDA was derived correctly via the
-/// `seeds = ...` constraint on the Accounts struct.
-fn debit_pda_to(
-    from: &UncheckedAccount<'_>,
-    to: &UncheckedAccount<'_>,
+/// Sign-and-transfer SOL from a SystemProgram-owned PDA via a signed CPI.
+///
+/// Direct lamport mutation (`try_borrow_mut_lamports`) fails at runtime on
+/// System-owned accounts; the program must invoke SystemProgram::transfer
+/// with the PDA's seeds as signer.
+fn transfer_signed<'info>(
+    system_program: AccountInfo<'info>,
+    from: AccountInfo<'info>,
+    to: AccountInfo<'info>,
     amount: u64,
+    signer_seeds: &[&[&[u8]]],
 ) -> Result<()> {
     if amount == 0 {
         return Ok(());
     }
-    let from_lamports = from.lamports();
-    require!(from_lamports >= amount, PotError::Overflow);
-    **from.try_borrow_mut_lamports()? = from_lamports
-        .checked_sub(amount)
-        .ok_or(PotError::Overflow)?;
-    let to_lamports = to.lamports();
-    **to.try_borrow_mut_lamports()? = to_lamports
-        .checked_add(amount)
-        .ok_or(PotError::Overflow)?;
-    Ok(())
+    let cpi = CpiContext::new_with_signer(
+        system_program,
+        Transfer { from, to },
+        signer_seeds,
+    );
+    system_program::transfer(cpi, amount)
 }

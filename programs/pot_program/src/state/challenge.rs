@@ -1,6 +1,11 @@
 use anchor_lang::prelude::*;
 
 /// Challenge claim categories from spec §5.1.
+///
+/// **Canonical wire ordering — DO NOT REORDER.** This enum is the source of
+/// truth; the SDK (`sdk/ts/src/types.ts`) and watcher (`watcher/src/types.rs`)
+/// must mirror these values. Cross-language conformance test pending — see
+/// code review C3 / `docs/code-review/2026-04-26-initial-review.md`.
 #[derive(AnchorSerialize, AnchorDeserialize, PartialEq, Eq, Copy, Clone, Debug)]
 pub enum ChallengeClaim {
     ModelMismatch = 0,
@@ -9,6 +14,10 @@ pub enum ChallengeClaim {
     Replay = 3,
     StaleVRF = 4,
     AttestationInvalid = 5,
+    /// Agent's claimed `output_commitment` doesn't match
+    /// `blake3(canonical_output)` from the trace bundle. Catchable without
+    /// re-execution; the byte-compare verifier is the canonical detector.
+    InconsistentCommitments = 6,
 }
 
 /// Challenge account. PDA: ["challenge", thought_pda, challenger].
