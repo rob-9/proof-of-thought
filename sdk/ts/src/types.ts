@@ -61,13 +61,20 @@ export const EquivClass = {
 } as const;
 export type EquivClass = (typeof EquivClass)[keyof typeof EquivClass];
 
-/** Challenge claim type — see §5.1 `Challenge.claim`. */
+/** Challenge claim type — see §5.1 `Challenge.claim`.
+ *
+ * **MUST stay in sync with `programs/pot_program/src/state/challenge.rs`
+ * `ChallengeClaim`.** The numeric values are the on-chain wire format.
+ */
 export const ChallengeClaim = {
   ModelMismatch: 0,
   OutputMismatch: 1,
   InputOmission: 2,
   Replay: 3,
   StaleVRF: 4,
+  AttestationInvalid: 5,
+  /** Agent's `output_commitment` does not match blake3 of canonical_output bytes. */
+  InconsistentCommitments: 6,
 } as const;
 export type ChallengeClaim = (typeof ChallengeClaim)[keyof typeof ChallengeClaim];
 
