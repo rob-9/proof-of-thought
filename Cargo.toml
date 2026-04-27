@@ -1,5 +1,5 @@
 [workspace]
-members = ["programs/pot_program"]
+members = ["programs/pot_program", "watcher"]
 resolver = "2"
 
 [workspace.metadata]
