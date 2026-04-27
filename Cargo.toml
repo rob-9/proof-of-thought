@@ -1,5 +1,9 @@
 [workspace]
-members = ["programs/pot_program", "watcher"]
+# pot_program lives in a separate workspace because Anchor 0.30 pins solana 1.x
+# while the watcher uses solana 2.x. Both worlds can't share a Cargo lockfile.
+# `anchor build` reads programs/pot_program/Cargo.toml directly.
+members = ["watcher"]
+exclude = ["programs/pot_program", ".worktrees"]
 resolver = "2"
 
 [workspace.metadata]
