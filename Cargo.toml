@@ -1,0 +1,16 @@
+[workspace]
+members = ["programs/pot_program"]
+resolver = "2"
+
+[workspace.metadata]
+description = "Proof of Thought (PoT) — verifiable agent reasoning on Solana"
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+
+[profile.release.build-override]
+opt-level = 3
+incremental = false
+codegen-units = 1
