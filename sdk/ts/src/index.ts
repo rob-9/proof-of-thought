@@ -1,10 +1,12 @@
 /**
  * `@canteen/pot` — Proof of Thought TypeScript SDK.
  *
- * This package currently ships the canonicalisation + commitment layer.
- * The on-chain client wrapper (submit/challenge/resolve) ships in a
- * follow-up phase and will live alongside these exports.
+ * Canonicalisation (CBOR + blake3), on-chain account types, program
+ * helpers (PDA derivation, instruction encoding, discriminators), and a
+ * high-level `ProofOfThought` client are all exported from here.
  */
 
 export * from "./canonical/index.js";
 export * from "./types.js";
+export * from "./program/index.js";
+export * from "./client.js";
