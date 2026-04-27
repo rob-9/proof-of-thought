@@ -4,8 +4,10 @@
 //! events. Anchor emits events as base64-encoded payloads on a log line that
 //! starts with `Program data:`. Each payload is:
 //!
-//!     [u8; 8]   event discriminator (= sha256("event:<EventName>")[..8])
-//!     [..]      Borsh-serialized event fields
+//! ```text
+//! [u8; 8]   event discriminator (= sha256("event:<EventName>")[..8])
+//! [..]      Borsh-serialized event fields
+//! ```
 //!
 //! We match against [`crate::types::THOUGHT_SUBMITTED_DISCRIMINATOR`] and
 //! decode the fields manually using the layout documented on
