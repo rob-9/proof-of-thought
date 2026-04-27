@@ -82,6 +82,13 @@ struct Cli {
     /// lower = faster backpressure on slow stages.
     #[arg(long, default_value_t = 256)]
     channel_capacity: usize,
+
+    /// Dry run — log what would be filed but do not submit transactions.
+    /// Required for the MVP: the real `RpcChallengeSubmitter` is stubbed
+    /// pending program IDL merge. Operators must set this explicitly to
+    /// acknowledge that no on-chain challenges will actually fire.
+    #[arg(long, default_value_t = false)]
+    dry_run: bool,
 }
 
 #[tokio::main]
@@ -102,12 +109,25 @@ async fn main() -> Result<()> {
     )
     .context("invalid watcher config")?;
 
+    // Risk #3 from code review: the real RpcChallengeSubmitter is stubbed,
+    // so non-dry-run with an active bond strategy would silently fall through
+    // to MockChallengeSubmitter. Refuse to start unless the operator
+    // explicitly opted into dry-run.
+    if !cli.dry_run && !matches!(cfg.bond_strategy, BondStrategy::Disabled) {
+        return Err(anyhow::anyhow!(
+            "real RpcChallengeSubmitter is not yet implemented (pending program IDL merge). \
+             Pass --dry-run to acknowledge that no on-chain challenges will fire, or set \
+             --bond-strategy disabled to run as an observer."
+        ));
+    }
+
     info!(
         rpc = %cfg.rpc_url,
         ws = %cfg.ws_url,
         storage = ?cfg.storage,
         bond = ?cfg.bond_strategy,
         program_id = %cfg.program_id,
+        dry_run = cli.dry_run,
         "starting pot-watcher"
     );
 

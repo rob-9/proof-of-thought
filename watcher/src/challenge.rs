@@ -181,13 +181,17 @@ pub enum FileDecision {
 pub struct ChallengeFiler<S: ChallengeSubmitter> {
     submitter: S,
     bond_strategy: BondStrategy,
-    /// Per-watcher cap. Sum of (active bond) + (this challenge's bond) must
-    /// not exceed this value, or the filer skips. Defends against a single
-    /// dispute draining the watcher's wallet.
+    /// Per-watcher cap. Sum of (in-flight bond) + (this challenge's bond)
+    /// must not exceed this value, or the filer skips. Defends against a
+    /// single watcher draining its wallet across many parallel disputes.
     pub max_stake_at_risk_lamports: u64,
     /// Estimated tx fee for the EV check. Defaults to
     /// [`DEFAULT_TX_FEE_LAMPORTS`].
     pub tx_fee_lamports: u64,
+    /// Lamports currently locked in unresolved challenges this watcher filed.
+    /// Increment on `submit`, decrement when the dispute resolves
+    /// (caller calls `release_bond`).
+    in_flight_bond: std::sync::atomic::AtomicU64,
 }
 
 impl<S: ChallengeSubmitter> ChallengeFiler<S> {
@@ -201,7 +205,15 @@ impl<S: ChallengeSubmitter> ChallengeFiler<S> {
             bond_strategy,
             max_stake_at_risk_lamports,
             tx_fee_lamports: DEFAULT_TX_FEE_LAMPORTS,
+            in_flight_bond: std::sync::atomic::AtomicU64::new(0),
         }
+    }
+
+    /// Decrement the in-flight bond counter when a dispute resolves. The
+    /// pipeline calls this from the resolver-watch loop.
+    pub fn release_bond(&self, lamports: u64) {
+        self.in_flight_bond
+            .fetch_sub(lamports, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Compute the bond for this filing per the configured strategy.
@@ -241,7 +253,8 @@ impl<S: ChallengeSubmitter> ChallengeFiler<S> {
 
         let bond = self.bond_for(policy_bond_min);
         // Distribution from spec §5.4: 60% of slashed stake to challenger.
-        let expected_payout = agent_stake_lamports.saturating_mul(6) / 10;
+        // u128 to avoid saturating-mul drift on very large stakes (I4).
+        let expected_payout = ((agent_stake_lamports as u128 * 6) / 10) as u64;
         let cost = bond.saturating_add(self.tx_fee_lamports);
 
         if expected_payout <= cost {
@@ -252,7 +265,11 @@ impl<S: ChallengeSubmitter> ChallengeFiler<S> {
             };
         }
 
-        if bond > self.max_stake_at_risk_lamports {
+        // I7: enforce the cap against (existing in-flight bond + this bond),
+        // not just this bond alone. `in_flight_bond` is a watcher-local atomic
+        // that the filer increments on `submit` and decrements on resolution.
+        let in_flight = self.in_flight_bond_lamports();
+        if bond.saturating_add(in_flight) > self.max_stake_at_risk_lamports {
             return FileDecision::EvNegative {
                 expected_payout,
                 bond,
@@ -270,6 +287,11 @@ impl<S: ChallengeSubmitter> ChallengeFiler<S> {
         })
     }
 
+    fn in_flight_bond_lamports(&self) -> u64 {
+        self.in_flight_bond
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     /// Decide and dispatch.
     pub async fn decide_and_file(
         &self,
@@ -285,7 +307,12 @@ impl<S: ChallengeSubmitter> ChallengeFiler<S> {
                     bond = args.bond,
                     "filing challenge"
                 );
+                let bond = args.bond;
                 let sig = self.submitter.submit(args).await?;
+                // Reserve the bond against the cap until the dispute resolves.
+                // Caller invokes `release_bond` on resolution.
+                self.in_flight_bond
+                    .fetch_add(bond, std::sync::atomic::Ordering::Relaxed);
                 Ok(Some(sig))
             }
             FileDecision::EvNegative {
