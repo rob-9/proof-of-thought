@@ -73,11 +73,24 @@ impl ThoughtRecord {
 
 /// Event emitted on successful `submit_thought`. trace_uri lives here, not
 /// in the account, to keep account size bounded.
+///
+/// **Canonical wire ordering — DO NOT REORDER.** The watcher
+/// (`watcher/src/types.rs::ThoughtSubmittedEvent`) decodes this event with
+/// the field order below. Anchor serializes events in declaration order,
+/// so any change here breaks every deployed watcher.
+///
+/// We include the commitments inline (rather than forcing watchers to fetch
+/// the ThoughtRecord account) so the verifier pipeline can run with
+/// websocket-only access — saves an RPC round-trip per event under load.
 #[event]
 pub struct ThoughtSubmitted {
-    pub thought_pda: Pubkey,
     pub agent: Pubkey,
+    pub thought_pda: Pubkey,
     pub model_id: [u8; 32],
+    pub input_commitment: [u8; 32],
+    pub output_commitment: [u8; 32],
+    pub trace_uri_hash: [u8; 32],
+    pub vrf_seed: [u8; 32],
     pub policy_id: [u8; 32],
     pub slot: u64,
     pub trace_uri: String,

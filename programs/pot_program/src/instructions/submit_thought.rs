@@ -118,9 +118,13 @@ pub fn submit_thought_handler(
         .ok_or(PotError::Overflow)?;
 
     emit!(ThoughtSubmitted {
-        thought_pda: t.key(),
         agent: agent.key(),
+        thought_pda: t.key(),
         model_id: args.model_id,
+        input_commitment: args.input_commitment,
+        output_commitment: args.output_commitment,
+        trace_uri_hash: args.trace_uri_hash,
+        vrf_seed: args.vrf_seed,
         policy_id: args.policy_id,
         slot: clock.slot,
         trace_uri,
