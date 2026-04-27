@@ -118,10 +118,16 @@ export interface ModelRegistry {
 }
 
 // ---------------------------------------------------------------------------
-// ThoughtRecord    PDA: ["thought", agent, nonce]
+// ThoughtRecord    PDA: ["thought", agent, vrf_nonce_idx_le]
 // ---------------------------------------------------------------------------
 //
-// Spec §4.1, 264 bytes incl. discriminator. Layout (from spec):
+// Spec §4.1 specifies 264 bytes including discriminator. The on-chain
+// program adds 5 lifecycle-bookkeeping fields beyond the spec
+// (`attestation_verified`, `challenge_deadline_slot`, `consumed_count`,
+// `vrf_nonce_idx`, `bump`) that are load-bearing for §5.3 lifecycle
+// correctness. Total grows to 302 bytes.
+//
+// Byte layout (mirrors `programs/pot_program/src/state/thought.rs`):
 //   0 ..   8  discriminator
 //   8 ..  40  agent: Pubkey                     (32)
 //  40 ..  72  model_id: [u8; 32]                (32)
@@ -131,13 +137,14 @@ export interface ModelRegistry {
 // 168 .. 200  vrf_seed: [u8; 32]                (32)
 // 200 .. 232  policy_id: [u8; 32]               (32)
 // 232 .. 240  slot: u64                          (8)
-// 240 .. 272  action_pda: Pubkey                (32)  -- spec is 256 + 8 disc; see note
+// 240 .. 272  action_pda: Pubkey                (32)
 // 272 .. 273  status: u8                         (1)
-// 273 .. 280  _pad: [u8; 7]                      (7)
-//
-// NOTE: spec §4.1 reads "Total: 264 bytes incl. discriminator 8" but the
-// listed fields sum to 256+8 = 264 ONLY if `_pad` is 7 bytes; we follow the
-// spec layout exactly. Status enum is encoded as a `u8` to match.
+// 273 .. 274  attestation_verified: bool (u8)    (1)
+// 274 .. 282  challenge_deadline_slot: u64       (8)
+// 282 .. 286  consumed_count: u32                (4)
+// 286 .. 294  vrf_nonce_idx: u64                 (8)
+// 294 .. 295  bump: u8                           (1)
+// 295 .. 302  _pad: [u8; 7]                      (7)
 export interface ThoughtRecord {
   agent: PublicKey;
   modelId: Hash32;
@@ -149,6 +156,16 @@ export interface ThoughtRecord {
   slot: bigint;
   actionPda: PublicKey;
   status: ThoughtStatus;
+  /** True iff a TEE attestation skipped the challenge window. */
+  attestationVerified: boolean;
+  /** Slot after which `resolve_unchallenged` may finalize. */
+  challengeDeadlineSlot: bigint;
+  /** Number of consumer CPIs that have spent this thought. */
+  consumedCount: number;
+  /** Monotonic per-agent nonce; second component of the PDA seed. */
+  vrfNonceIdx: bigint;
+  /** Bump cached at submit time. */
+  bump: number;
   /** 7 bytes of alignment padding. Always zero on submit; never asserted on read. */
   pad: Uint8Array;
 }

@@ -81,6 +81,11 @@ describe("interface shapes", () => {
       slot: 312000000n,
       actionPda: ZERO_KEY,
       status: ThoughtStatus.Pending,
+      attestationVerified: false,
+      challengeDeadlineSlot: 312000150n,
+      consumedCount: 0,
+      vrfNonceIdx: 1n,
+      bump: 255,
       pad: new Uint8Array(7),
     };
     expect(t.status).toBe(0);
