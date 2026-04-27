@@ -1,6 +1,9 @@
 # Worktrees
 .worktrees/
 
+# Local-only debate / review artifacts (kept off remote intentionally)
+docs/debate/
+
 # Rust
 target/
 **/target/
