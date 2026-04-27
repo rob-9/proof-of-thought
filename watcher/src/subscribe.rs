@@ -71,20 +71,53 @@ impl WebsocketLogStream {
 #[async_trait]
 impl LogStream for WebsocketLogStream {
     async fn run(self: Arc<Self>, tx: mpsc::Sender<ThoughtSubmittedEvent>) -> anyhow::Result<()> {
-        // Reconnect loop. Solana's websocket is flaky; spec §8 says watchers
-        // are expected to be long-lived.
+        // Reconnect loop with exponential backoff + jitter. Solana's websocket
+        // is flaky; spec §8 says watchers are expected to be long-lived. A
+        // constant 5s backoff produced a reconnect storm under shared-NAT
+        // fleets — see I5 in the code review.
+        let mut attempt: u32 = 0;
         loop {
             match self.connect_and_pump(&tx).await {
                 Ok(()) => {
                     warn!("websocket pump returned cleanly — reconnecting");
+                    attempt = 0;
                 }
                 Err(e) => {
-                    error!(error = %e, "websocket pump failed; backing off 5s");
-                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    let backoff = jittered_backoff(attempt);
+                    error!(
+                        error = %e,
+                        backoff_ms = backoff.as_millis(),
+                        attempt,
+                        "websocket pump failed; backing off"
+                    );
+                    tokio::time::sleep(backoff).await;
+                    attempt = attempt.saturating_add(1);
                 }
             }
         }
     }
+}
+
+/// Exponential backoff with full-jitter, capped at 60s.
+///
+/// `attempt = 0` → ~1s, attempt 1 → ~2s, attempt 2 → ~4s, … capped.
+/// Jitter is sampled from `[0, base]` so the actual delay is in
+/// `[0, base × 2^attempt]` — full jitter as recommended by AWS Architecture
+/// Blog ("Exponential Backoff and Jitter", 2015).
+fn jittered_backoff(attempt: u32) -> Duration {
+    use std::time::SystemTime;
+    const BASE_MS: u64 = 1_000;
+    const CAP_MS: u64 = 60_000;
+    let exp_ms = BASE_MS.checked_shl(attempt.min(6)).unwrap_or(CAP_MS);
+    let bound_ms = exp_ms.min(CAP_MS);
+    // Cheap jitter source: nanos of system time XOR'd to spread across PIDs.
+    // Good enough for backoff; not cryptographic.
+    let nanos = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as u64)
+        .unwrap_or(0);
+    let jittered = nanos % bound_ms.max(1);
+    Duration::from_millis(jittered)
 }
 
 impl WebsocketLogStream {

@@ -40,6 +40,14 @@ pub struct RequestVrf<'info> {
 /// TODO(pyth-entropy): convert to a CPI request + callback once the Pyth
 /// Entropy SDK is wired in. See docs/future-work.md (#pyth-entropy).
 pub fn request_vrf_handler(ctx: Context<RequestVrf>, nonce_idx: u64, seed: [u8; 32]) -> Result<()> {
+    // I1: pin nonce_idx to the agent's monotonic counter. Without this an
+    // agent could pre-allocate VrfRequest PDAs at arbitrary indexes and
+    // gain a chosen relationship between nonce_idx and future block hashes.
+    require!(
+        nonce_idx == ctx.accounts.agent.vrf_nonce,
+        PotError::VRFAlreadyConsumed
+    );
+
     let vrf = &mut ctx.accounts.vrf_request;
     vrf.agent = ctx.accounts.agent.key();
     vrf.nonce_idx = nonce_idx;
