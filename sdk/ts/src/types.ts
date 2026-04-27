@@ -82,6 +82,7 @@ export type ChallengeClaim = (typeof ChallengeClaim)[keyof typeof ChallengeClaim
 // AgentProfile     PDA: ["agent", agent_pubkey]
 // ---------------------------------------------------------------------------
 //
+// Mirrors `programs/pot_program/src/state/agent.rs` AgentProfile (LEN 109).
 // Bytes:
 //   0 ..   8  discriminator
 //   8 ..  40  operator: Pubkey                  (32)
@@ -90,8 +91,9 @@ export type ChallengeClaim = (typeof ChallengeClaim)[keyof typeof ChallengeClaim
 //  80 ..  88  reputation: i64                    (8)
 //  88 ..  92  active_thoughts: u32               (4)
 //  92 .. 100  cooldown_until: u64                (8)
-// 100 .. 104  bump: u8 + _pad: [u8; 3]           (4)
-// Total: 104 bytes.
+// 100 .. 108  vrf_nonce: u64                     (8)
+// 108 .. 109  bump: u8                           (1)
+// Total: 109 bytes.
 export interface AgentProfile {
   operator: PublicKey;
   stakeVault: PublicKey;
@@ -99,6 +101,8 @@ export interface AgentProfile {
   reputation: bigint;
   activeThoughts: number;
   cooldownUntil: bigint;
+  /** Monotonic counter consumed by `request_vrf` to derive VrfRequest PDAs. */
+  vrfNonce: bigint;
   bump: number;
 }
 
@@ -181,23 +185,30 @@ export interface ThoughtRecord {
 // Challenge        PDA: ["challenge", thought_pda, challenger]
 // ---------------------------------------------------------------------------
 //
+// Mirrors `programs/pot_program/src/state/challenge.rs` Challenge (LEN 124).
 // Bytes:
 //   0 ..   8  discriminator
-//   8 ..  40  challenger: Pubkey                (32)
-//  40 ..  48  bond: u64                          (8)
-//  48 ..  49  claim: u8 (ChallengeClaim)         (1)
-//  49 ..  81  evidence_uri_hash: [u8; 32]       (32)
-//  81 ..  89  opened_at_slot: u64                (8)
-//  89 ..  90  resolved: bool (u8)                (1)
-//  90 ..  91  bump: u8                           (1)
-// Total: 91 bytes (program will pad to 96 for alignment).
+//   8 ..  40  thought: Pubkey                   (32)
+//  40 ..  72  challenger: Pubkey                (32)
+//  72 ..  80  bond: u64                          (8)
+//  80 ..  81  claim: u8 (ChallengeClaim)         (1)
+//  81 .. 113  evidence_uri_hash: [u8; 32]       (32)
+// 113 .. 121  opened_at_slot: u64                (8)
+// 121 .. 122  resolved: bool (u8)                (1)
+// 122 .. 123  verdict: bool (u8)                 (1)  meaningful when resolved
+// 123 .. 124  bump: u8                           (1)
+// Total: 124 bytes.
 export interface Challenge {
+  /** ThoughtRecord PDA this challenge disputes. */
+  thought: PublicKey;
   challenger: PublicKey;
   bond: bigint;
   claim: ChallengeClaim;
   evidenceUriHash: Hash32;
   openedAtSlot: bigint;
   resolved: boolean;
+  /** True iff challenger won (agent guilty). Only meaningful when resolved. */
+  verdict: boolean;
   bump: number;
 }
 
@@ -205,50 +216,65 @@ export interface Challenge {
 // Policy           PDA: ["policy", policy_id]
 // ---------------------------------------------------------------------------
 //
-// Bytes (variable — `allowed_models` is a bounded Vec):
+// Mirrors `programs/pot_program/src/state/policy.rs` Policy.
+// `MAX_ALLOWED_MODELS = 16` (program constant).
+// Bytes (fixed — Anchor reserves max length for the bounded Vec):
 //   0 ..   8  discriminator
 //   8 ..  40  policy_id: [u8; 32]               (32)
 //  40 ..  72  schema_uri_hash: [u8; 32]         (32)
 //  72 ..  73  equiv_class: u8 (EquivClass)       (1)
-//  73 ..  77  max_inference_ms: u32              (4)
-//  77 ..  85  challenge_window_slots: u64        (8)
-//  85 ..  93  bond_min: u64                      (8)
-//  93 ..  97  allowed_models len: u32            (4)
-//  97 ..  ..  allowed_models: [u8;32] × len     (32 each)
-//   ..        bump: u8                           (1)
-// `allowed_models` is bounded by program-level constant (default 16).
+//  73 ..  77  max_inference_slots: u32           (4)
+//  77 ..  85  max_action_age_slots: u64          (8)
+//  85 ..  93  challenge_window_slots: u64        (8)
+//  93 .. 101  bond_min: u64                      (8)
+// 101 .. 133  resolver: Pubkey                  (32)
+// 133 .. 165  treasury: Pubkey                  (32)
+// 165 .. 169  allowed_models len: u32            (4)
+// 169 .. 681  allowed_models: [u8;32] × 16     (32 × 16 = 512)
+// 681 .. 682  bump: u8                           (1)
+// Total: 682 bytes.
 export interface Policy {
   policyId: Hash32;
   schemaUriHash: Hash32;
   equivClass: EquivClass;
-  maxInferenceMs: number;
+  /** Cap on agent inference latency in slots — VRF freshness gate. */
+  maxInferenceSlots: number;
+  /** Slots a finalized thought stays valid for `consume_thought`. */
+  maxActionAgeSlots: bigint;
   challengeWindowSlots: bigint;
   bondMin: bigint;
+  /** Authorized resolver for challenged thoughts. Single-key MVP. */
+  resolver: PublicKey;
+  /** Treasury account that receives the protocol cut on slash/finalize. */
+  treasury: PublicKey;
+  /** Whitelist of model_ids accepted under this policy. Max 16 entries. */
   allowedModels: Hash32[];
   bump: number;
 }
 
 // ---------------------------------------------------------------------------
-// VrfRequest       PDA: ["vrf", agent, nonce_idx]
+// VrfRequest       PDA: ["vrf", agent, nonce_idx_le_bytes]
 // ---------------------------------------------------------------------------
 //
+// Mirrors `programs/pot_program/src/state/vrf.rs` VrfRequest (LEN 90).
 // Bytes:
 //   0 ..   8  discriminator
 //   8 ..  40  agent: Pubkey                     (32)
 //  40 ..  48  nonce_idx: u64                     (8)
 //  48 ..  80  seed: [u8; 32]                    (32)
-//  80 ..  88  requested_slot: u64                (8)
-//  88 ..  96  fulfilled_slot: u64                (8)   0 == not yet fulfilled
-//  96 ..  97  consumed: bool (u8)                (1)
-//  97 ..  98  bump: u8                           (1)
-// Total: 98 bytes (program pads to 104).
+//  80 ..  88  request_slot: u64                  (8)
+//  88 ..  89  consumed: bool (u8)                (1)
+//  89 ..  90  bump: u8                           (1)
+// Total: 90 bytes.
+//
+// Note: the program does not separate `requested_slot` / `fulfilled_slot`
+// today — Pyth Entropy CPI is stubbed (caller supplies the seed). When the
+// real callback flow lands, a `fulfilled_slot` field will be added.
 export interface VrfRequest {
   agent: PublicKey;
   nonceIdx: bigint;
   seed: Hash32;
-  requestedSlot: bigint;
-  /** 0 if request is still pending. */
-  fulfilledSlot: bigint;
+  requestSlot: bigint;
   consumed: boolean;
   bump: number;
 }

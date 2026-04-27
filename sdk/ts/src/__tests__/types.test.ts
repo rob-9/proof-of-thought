@@ -64,6 +64,7 @@ describe("interface shapes", () => {
       reputation: 0n,
       activeThoughts: 0,
       cooldownUntil: 0n,
+      vrfNonce: 0n,
       bump: 255,
     };
     expect(a.bump).toBe(255);
@@ -101,21 +102,26 @@ describe("interface shapes", () => {
       bump: 255,
     };
     const c: Challenge = {
+      thought: ZERO_KEY,
       challenger: ZERO_KEY,
       bond: 1_000_000n,
       claim: ChallengeClaim.OutputMismatch,
       evidenceUriHash: ZERO_HASH,
       openedAtSlot: 312000050n,
       resolved: false,
+      verdict: false,
       bump: 255,
     };
     const p: Policy = {
       policyId: ZERO_HASH,
       schemaUriHash: ZERO_HASH,
       equivClass: EquivClass.Strict,
-      maxInferenceMs: 30_000,
+      maxInferenceSlots: 75,
+      maxActionAgeSlots: 300n,
       challengeWindowSlots: 150n,
       bondMin: 1_000_000n,
+      resolver: ZERO_KEY,
+      treasury: ZERO_KEY,
       allowedModels: [],
       bump: 255,
     };
@@ -123,8 +129,7 @@ describe("interface shapes", () => {
       agent: ZERO_KEY,
       nonceIdx: 0n,
       seed: ZERO_HASH,
-      requestedSlot: 311999000n,
-      fulfilledSlot: 311999002n,
+      requestSlot: 311999000n,
       consumed: false,
       bump: 255,
     };
